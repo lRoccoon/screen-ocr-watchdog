@@ -1,0 +1,17 @@
+[project]
+name = "screen-ocr-watchdog"
+version = "0.1.0"
+description = "Screen region OCR watchdog that pushes new messages to Lark/Feishu."
+requires-python = ">=3.11"
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
