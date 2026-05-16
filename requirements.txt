@@ -1,6 +1,6 @@
 PySide6>=6.6
-paddleocr>=2.7
-paddlepaddle>=2.6
+paddleocr>=2.7,<3
+paddlepaddle>=2.6,<3
 mss>=9.0
 Pillow>=10
 requests>=2.31
