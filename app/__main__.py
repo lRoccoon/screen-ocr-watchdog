@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 
 from PySide6.QtCore import QObject, Signal
