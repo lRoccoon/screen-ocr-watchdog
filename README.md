@@ -101,6 +101,32 @@ sudo apt install -y libegl1 libxkbcommon0 libxkbcommon-x11-0 \
 
 打包采用 `pyinstaller --onefile --windowed`，PaddleOCR 中文模型首次启动时由库自动下载到用户缓存目录（不打入 exe，控制体积）。
 
+## image_diff 模式（不依赖 OCR）
+
+如果 PaddleOCR 在你的环境上跑不起来，或场景只关心"画面有没有变化"（比如告警面板、看板监听），可以切到不走 OCR 的纯图像 diff 模式：
+
+```yaml
+mode: image_diff
+notifier:
+  lark_app_id: cli_xxxx          # 飞书开放平台创建的自建应用 app_id
+  lark_app_secret: xxxx          # 自建应用 app_secret
+  lark_receive_id: oc_xxxx       # 目标群 chat_id（或个人 open_id / email 等）
+  lark_receive_id_type: chat_id  # chat_id | open_id | user_id | union_id | email
+image_diff:
+  pixel_diff_threshold: 30       # 灰度像素差 >= 30 才算"变了"
+  change_ratio_threshold: 0.005  # 变化像素占总像素 >= 0.5% 才触发推送
+  min_interval_seconds: 5        # 两次推送之间最小间隔
+  bbox_padding: 8                # diff bbox 四周向外扩 N 像素
+```
+
+工作流程：
+1. 与"上次推送过的画面"做 grayscale + abs diff + threshold
+2. 变化像素占比超阈 → 取最小包围矩形 + padding → 裁切
+3. 通过自建应用 OpenAPI 上传图获取 image_key → 发 image 消息到目标 receive_id
+4. 同时把裁切图存到 `<user_data_dir>/diff_frames/<ts>.png` 便于排查
+
+注意：飞书自定义机器人 webhook 不能直接发图片，所以这条路径必须用**自建应用** + tenant_access_token。在 [飞书开放平台](https://open.feishu.cn) 创建自建应用，开通 `im:message`、`im:resource` 权限，把 app_id/app_secret 填到 config，并把应用拉进目标群即可。
+
 ## 关键参数（`config.yaml`）
 
 ```yaml
