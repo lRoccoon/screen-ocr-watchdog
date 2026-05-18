@@ -14,7 +14,7 @@ from app.core.scheduler import WatchdogRunner
 from app.notifier.lark_webhook import LarkWebhookNotifier
 from app.ocr.engine import OcrEngine, PaddleOcrEngine
 from app.ocr.postprocess import OcrBlock
-from app.paths import config_path, history_path
+from app.paths import config_path, history_path, log_dir
 from app.storage.config import load_config, save_config
 from app.storage.history import HistoryStore
 from app.ui.history_view import HistoryView
@@ -170,11 +170,30 @@ class AppController:
         QApplication.instance().quit()
 
 
-def main() -> None:
+def _setup_logging() -> None:
+    """配置日志：始终写文件到 user log dir；若有 stderr 也挂一份控制台。
+
+    PyInstaller --windowed 模式下 sys.stderr 为 None，StreamHandler 默认会用
+    sys.stderr 报错——所以必须先判断。文件日志是运行期问题排查的唯一手段。
+    """
+    log_file = log_dir() / "app.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    handlers: list[logging.Handler] = [logging.FileHandler(log_file, encoding="utf-8")]
+    if sys.stderr is not None:
+        handlers.append(logging.StreamHandler(sys.stderr))
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,
     )
+    log.info("log file: %s", log_file)
+
+
+def main() -> None:
+    _setup_logging()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     controller = AppController()
