@@ -87,3 +87,17 @@ def test_min_interval_throttles_and_keeps_baseline():
     # 第四帧 t=20，节流过期；diff 是相对于"上次推送过的画面"（含第一个 rect）
     # 第三帧的新 rect 在第四帧也存在 → diff 超阈 → 推送
     assert d.detect(_with_rect(rect=(100, 50, 150, 80)), now=20.0) is not None
+
+
+def test_size_mismatch_resets_baseline_returns_none():
+    """frame 与 baseline 尺寸不一致时，重置基线、返回 None，下一帧才开始正常对比。"""
+    d = ImageDiffDetector(pixel_diff_threshold=30, change_ratio_threshold=0.001)
+    d.detect(Image.new("RGB", (200, 100), (255, 255, 255)), now=0.0)
+    # 不同尺寸的新帧 → 不触发，但 baseline 被替换为新尺寸
+    bigger = Image.new("RGB", (300, 150), (255, 255, 255))
+    assert d.detect(bigger, now=10.0) is None
+    # 再来一张同尺寸但有变化的帧 → 正常触发
+    bigger_changed = bigger.copy()
+    ImageDraw.Draw(bigger_changed).rectangle((10, 10, 80, 80), fill=(0, 0, 0))
+    result = d.detect(bigger_changed, now=20.0)
+    assert result is not None

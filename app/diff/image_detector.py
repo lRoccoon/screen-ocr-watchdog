@@ -39,6 +39,11 @@ class ImageDiffDetector:
             self._baseline = frame.copy()
             return None
 
+        if frame.size != self._baseline.size:
+            # 尺寸变化（DPI 切换 / 区域被改）→ 当前帧作新基线，下一帧再比
+            self._baseline = frame.copy()
+            return None
+
         gray_base = ImageOps.grayscale(self._baseline)
         gray_cur = ImageOps.grayscale(frame)
         diff = ImageChops.difference(gray_base, gray_cur)
