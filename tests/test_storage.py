@@ -44,3 +44,50 @@ def test_history_tail_limits(tmp_path: Path):
 def test_history_empty_when_no_file(tmp_path: Path):
     h = HistoryStore(tmp_path / "h.ndjson")
     assert h.tail(10) == []
+
+
+def test_config_default_mode_is_ocr():
+    """旧 config 文件不带 mode 字段时，默认走 ocr 模式（向后兼容）。"""
+    cfg = AppConfig()
+    assert cfg.mode == "ocr"
+
+
+def test_config_image_diff_defaults():
+    cfg = AppConfig()
+    assert cfg.image_diff.pixel_diff_threshold == 30
+    assert cfg.image_diff.change_ratio_threshold == 0.005
+    assert cfg.image_diff.min_interval_seconds == 5
+    assert cfg.image_diff.bbox_padding == 8
+
+
+def test_config_notifier_lark_app_defaults():
+    cfg = AppConfig()
+    assert cfg.notifier.lark_app_id == ""
+    assert cfg.notifier.lark_app_secret == ""
+    assert cfg.notifier.lark_receive_id == ""
+    assert cfg.notifier.lark_receive_id_type == "chat_id"
+
+
+def test_config_load_image_diff_yaml(tmp_path):
+    """加载手写的 image_diff 配置 YAML。"""
+    p = tmp_path / "c.yaml"
+    p.write_text(
+        "mode: image_diff\n"
+        "image_diff:\n"
+        "  pixel_diff_threshold: 50\n"
+        "  change_ratio_threshold: 0.01\n"
+        "notifier:\n"
+        "  lark_app_id: cli_xxx\n"
+        "  lark_app_secret: sec_xxx\n"
+        "  lark_receive_id: oc_abc\n"
+        "  lark_receive_id_type: chat_id\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(p)
+    assert cfg.mode == "image_diff"
+    assert cfg.image_diff.pixel_diff_threshold == 50
+    assert cfg.image_diff.change_ratio_threshold == 0.01
+    # 没写的字段保留默认
+    assert cfg.image_diff.min_interval_seconds == 5
+    assert cfg.notifier.lark_app_id == "cli_xxx"
+    assert cfg.notifier.lark_receive_id_type == "chat_id"
