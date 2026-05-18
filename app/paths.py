@@ -19,3 +19,8 @@ def history_path() -> Path:
 
 def log_dir() -> Path:
     return Path(user_log_dir(APP_NAME, APP_AUTHOR))
+
+
+def user_data_dir_path() -> Path:
+    """user data dir 根（history.ndjson 所在目录），用于派生其他数据子目录如 diff_frames。"""
+    return Path(user_data_dir(APP_NAME, APP_AUTHOR))

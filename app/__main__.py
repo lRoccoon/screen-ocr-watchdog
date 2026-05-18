@@ -9,12 +9,9 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.capture.mss_capturer import MssCapturer
-from app.core.pipeline import FrameResult, Pipeline
+from app.core.pipeline_factory import build_pipeline
 from app.core.scheduler import WatchdogRunner
-from app.notifier.lark_webhook import LarkWebhookNotifier
-from app.ocr.engine import OcrEngine, PaddleOcrEngine
-from app.ocr.postprocess import OcrBlock
-from app.paths import config_path, history_path, log_dir
+from app.paths import config_path, history_path, log_dir, user_data_dir_path
 from app.storage.config import load_config, save_config
 from app.storage.history import HistoryStore
 from app.ui.history_view import HistoryView
@@ -23,20 +20,6 @@ from app.ui.settings_window import SettingsWindow
 from app.ui.tray import TrayController
 
 log = logging.getLogger("screen-ocr-watchdog")
-
-
-def _build_ocr() -> OcrEngine:
-    """允许通过环境变量切换为 noop OCR，便于无 paddle 环境的 UI 烟雾测试。"""
-    if os.environ.get("SOW_FAKE_OCR") == "1":
-        from PIL import Image
-
-        class _NoopOcr(OcrEngine):
-            def recognize(self, image: "Image.Image") -> list[OcrBlock]:  # type: ignore[override]
-                return []
-
-        log.info("using noop OCR engine (SOW_FAKE_OCR=1)")
-        return _NoopOcr()
-    return PaddleOcrEngine(lang="ch")
 
 
 class WatchdogSignals(QObject):
@@ -49,7 +32,6 @@ class AppController:
         self.cfg_path = config_path()
         self.config = load_config(self.cfg_path)
         self.history = HistoryStore(history_path())
-        self.ocr = _build_ocr()
         self.signals = WatchdogSignals()
         self.runner: WatchdogRunner | None = None
         self._paused = False
@@ -87,8 +69,8 @@ class AppController:
             return
         r = self.config.region
         capturer = MssCapturer(r.x, r.y, r.width, r.height)
-        notifier = LarkWebhookNotifier(self.config.notifier.lark_webhook_url)
-        pipeline = Pipeline(ocr=self.ocr, notifier=notifier, history=self.history, config=self.config)
+        frames_dir = user_data_dir_path() / "diff_frames"
+        pipeline = build_pipeline(self.config, history=self.history, frames_dir=frames_dir)
         self.runner = WatchdogRunner(
             pipeline=pipeline,
             capturer=capturer,
@@ -156,7 +138,7 @@ class AppController:
         log.info("config saved to %s", self.cfg_path)
         self.restart_runner()
 
-    def _on_frame_done(self, fr: FrameResult) -> None:
+    def _on_frame_done(self, fr: object) -> None:
         if fr.new_messages and self._settings is not None:
             self._settings.update_debug("\n---\n".join(m.text for m in fr.new_messages))
 
