@@ -52,19 +52,14 @@ def test_config_default_mode_is_ocr():
     assert cfg.mode == "ocr"
 
 
-def test_config_image_diff_defaults():
-    cfg = AppConfig()
+def test_config_missing_file_has_image_diff_and_notifier_defaults(tmp_path: Path):
+    """缺失配置文件时，image_diff 与 notifier 的默认值通过 load_config 路径验证。"""
+    cfg = load_config(tmp_path / "missing.yaml")
     assert cfg.image_diff.pixel_diff_threshold == 30
     assert cfg.image_diff.change_ratio_threshold == 0.005
     assert cfg.image_diff.min_interval_seconds == 5
     assert cfg.image_diff.bbox_padding == 8
-
-
-def test_config_notifier_lark_app_defaults():
-    cfg = AppConfig()
     assert cfg.notifier.lark_app_id == ""
-    assert cfg.notifier.lark_app_secret == ""
-    assert cfg.notifier.lark_receive_id == ""
     assert cfg.notifier.lark_receive_id_type == "chat_id"
 
 
@@ -90,4 +85,5 @@ def test_config_load_image_diff_yaml(tmp_path):
     # 没写的字段保留默认
     assert cfg.image_diff.min_interval_seconds == 5
     assert cfg.notifier.lark_app_id == "cli_xxx"
+    assert cfg.notifier.lark_app_secret == "sec_xxx"
     assert cfg.notifier.lark_receive_id_type == "chat_id"
