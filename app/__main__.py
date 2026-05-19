@@ -69,7 +69,12 @@ class AppController:
         r = self.config.region
         capturer = MssCapturer(r.x, r.y, r.width, r.height)
         frames_dir = user_data_dir_path() / "diff_frames"
-        pipeline = build_pipeline(self.config, history=self.history, frames_dir=frames_dir)
+        try:
+            pipeline = build_pipeline(self.config, history=self.history, frames_dir=frames_dir)
+        except Exception as e:
+            log.error("build_pipeline failed | mode=%s", self.config.mode, exc_info=True)
+            self._on_error(str(e))
+            return
         self.runner = WatchdogRunner(
             pipeline=pipeline,
             capturer=capturer,
