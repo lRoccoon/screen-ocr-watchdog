@@ -30,6 +30,7 @@ jobs:
         run: |
           pyinstaller --noconfirm --onefile --windowed `
             --name ScreenOcrWatchdog `
+            --collect-data Cython `
             app/__main__.py
 
       - name: Upload artifact
