@@ -26,7 +26,7 @@ jobs:
       - name: Run tests
         run: pytest
 
-      - name: Build single-file exe
+      - name: Build exe (onedir)
         run: |
           $paddleocrDir = python -c "import paddleocr, os; print(os.path.dirname(paddleocr.__file__))"
           Write-Host "paddleocr source dir: $paddleocrDir"
@@ -48,22 +48,29 @@ jobs:
               }
           }
 
-          pyinstaller --noconfirm --onefile --windowed `
+          # --onedir 而非 --onefile：所有依赖文件物理放在 dist/ScreenOcrWatchdog/
+          # 下，避开 _MEI*\ 临时解压目录引起的 paddleocr/Cython 找不到资源类问题。
+          pyinstaller --noconfirm --onedir --windowed `
             --name ScreenOcrWatchdog `
             --collect-data Cython `
             --add-data "${paddleocrDir};paddleocr" `
             $extraFlags `
             app/__main__.py
 
+      - name: Zip dist folder
+        run: |
+          Compress-Archive -Path dist/ScreenOcrWatchdog -DestinationPath dist/ScreenOcrWatchdog.zip
+          Get-Item dist/ScreenOcrWatchdog.zip | Select-Object Name, Length
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ScreenOcrWatchdog-exe
-          path: dist/ScreenOcrWatchdog.exe
+          name: ScreenOcrWatchdog
+          path: dist/ScreenOcrWatchdog.zip
           if-no-files-found: error
 
       - name: Attach to release (only on tag push)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ScreenOcrWatchdog.exe
+          files: dist/ScreenOcrWatchdog.zip
