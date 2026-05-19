@@ -28,9 +28,12 @@ jobs:
 
       - name: Build single-file exe
         run: |
+          $paddleocrDir = python -c "import paddleocr, os; print(os.path.dirname(paddleocr.__file__))"
+          Write-Host "paddleocr source dir: $paddleocrDir"
           pyinstaller --noconfirm --onefile --windowed `
             --name ScreenOcrWatchdog `
             --collect-data Cython `
+            --add-data "${paddleocrDir};paddleocr" `
             app/__main__.py
 
       - name: Upload artifact
