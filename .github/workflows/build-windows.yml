@@ -8,69 +8,33 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-go@v5
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          go-version: 'stable'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-dev.txt
-          # paddleocr 的 ppocr/data/imaug/iaa_augment.py 在运行时 import
-          # albumentations，但部分 paddleocr 版本没把它写进 install_requires。
-          # 显式补装（已装则 pip no-op，不改动版本）。
-          pip install albumentations
+      - name: Test core packages
+        run: go test ./internal/paths/ ./internal/config/ ./internal/diff/ ./internal/notify/ ./internal/history/ ./internal/pipeline/ ./internal/watcher/
 
-      - name: Run tests
-        run: pytest
-
-      - name: Build exe (onedir)
-        run: |
-          $paddleocrDir = python -c "import paddleocr, os; print(os.path.dirname(paddleocr.__file__))"
-          Write-Host "paddleocr source dir: $paddleocrDir"
-
-          # paddleocr 运行时把自身目录塞进 sys.path，使 ppocr / tools 成为顶层
-          # 包，再用 _import_file 动态加载。PyInstaller 分析期没有这个 path hack，
-          # 手动设 PYTHONPATH，配合 --collect-submodules 让分析能走进 ppocr /
-          # tools 的全部子模块 —— 这会驱动「传递依赖分析」，自动发现并打包它们
-          # import 的 albumentations / shapely / ... 不必逐个 ModuleNotFoundError
-          # 试出来。
-          $env:PYTHONPATH = $paddleocrDir
-
-          # --onedir：所有依赖文件物理放在 dist/ScreenOcrWatchdog/ 下，避开
-          # _MEI*\ 临时解压目录引起的找不到资源类问题。
-          pyinstaller --noconfirm --onedir --windowed `
-            --name ScreenOcrWatchdog `
-            --collect-data Cython `
-            --add-data "${paddleocrDir};paddleocr" `
-            --collect-submodules paddleocr `
-            --collect-submodules ppocr `
-            --collect-submodules tools `
-            --collect-all shapely `
-            --collect-all pyclipper `
-            --collect-all albumentations `
-            app/__main__.py
-
-      - name: Zip dist folder
-        run: |
-          Compress-Archive -Path dist/ScreenOcrWatchdog -DestinationPath dist/ScreenOcrWatchdog.zip
-          Get-Item dist/ScreenOcrWatchdog.zip | Select-Object Name, Length
+      - name: Cross-compile Windows exe
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+        run: go build -ldflags="-H windowsgui -s -w" -o ScreenWatchdog.exe .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ScreenOcrWatchdog
-          path: dist/ScreenOcrWatchdog.zip
+          name: ScreenWatchdog
+          path: ScreenWatchdog.exe
           if-no-files-found: error
 
       - name: Attach to release (only on tag push)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/ScreenOcrWatchdog.zip
+          files: ScreenWatchdog.exe
