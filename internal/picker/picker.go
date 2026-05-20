@@ -83,12 +83,13 @@ type msg struct {
 
 // pick 内部状态在单次 Pick 调用内有效（Pick 串行调用，无并发）。
 var (
-	startX, startY int32
-	endX, endY     int32
-	dragging       bool
-	picked         bool
-	cancelled      bool
-	pickHWND       windows.Handle
+	startX, startY  int32
+	endX, endY      int32
+	dragging        bool
+	picked          bool
+	cancelled       bool
+	pickHWND        windows.Handle
+	classRegistered bool
 )
 
 func loword(l uintptr) int32 { return int32(int16(l & 0xffff)) }
@@ -136,17 +137,22 @@ func Pick() (x, y, w, h int, ok bool, err error) {
 	hInstance, _, _ := pGetModuleHandleW.Call(0)
 	className, _ := syscall.UTF16PtrFromString("SOWRegionPicker")
 
-	cursor, _, _ := pLoadCursorW.Call(0, uintptr(idcCross))
-
-	wc := wndclassexw{
-		cbSize:        uint32(unsafe.Sizeof(wndclassexw{})),
-		lpfnWndProc:   syscall.NewCallback(wndProc),
-		hInstance:     windows.Handle(hInstance),
-		hCursor:       windows.Handle(cursor),
-		lpszClassName: className,
-	}
-	if ret, _, e := pRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc))); ret == 0 {
-		return 0, 0, 0, 0, false, fmt.Errorf("picker: RegisterClassExW: %v", e)
+	// 窗口类只注册一次：Win32 不允许重复注册同名类，重复注册会返回
+	// ERROR_CLASS_ALREADY_EXISTS，导致第二次 Pick（再次框选）失败。
+	// 同时 syscall.NewCallback 的回调 thunk 数量有限，也应只生成一次。
+	if !classRegistered {
+		cursor, _, _ := pLoadCursorW.Call(0, uintptr(idcCross))
+		wc := wndclassexw{
+			cbSize:        uint32(unsafe.Sizeof(wndclassexw{})),
+			lpfnWndProc:   syscall.NewCallback(wndProc),
+			hInstance:     windows.Handle(hInstance),
+			hCursor:       windows.Handle(cursor),
+			lpszClassName: className,
+		}
+		if ret, _, e := pRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc))); ret == 0 {
+			return 0, 0, 0, 0, false, fmt.Errorf("picker: RegisterClassExW: %v", e)
+		}
+		classRegistered = true
 	}
 
 	cx, _, _ := pGetSystemMetrics.Call(smCXScreen)

@@ -22,10 +22,11 @@ import (
 
 // controller 持有运行期状态，托盘回调操作它。
 type controller struct {
-	cfg    config.Config
-	store  *history.Store
-	watch  *watcher.Watcher
-	paused bool
+	cfg       config.Config
+	store     *history.Store
+	watch     *watcher.Watcher
+	paused    bool
+	configErr error // 非 nil 表示 config.yaml 解析失败
 }
 
 func main() {
@@ -36,8 +37,9 @@ func main() {
 		slog.Error("load config failed", "err", err)
 	}
 	c := &controller{
-		cfg:   cfg,
-		store: history.NewStore(paths.HistoryPath(), paths.FramesDir()),
+		cfg:       cfg,
+		store:     history.NewStore(paths.HistoryPath(), paths.FramesDir()),
+		configErr: err,
 	}
 
 	cb := tray.Callbacks{
@@ -67,6 +69,11 @@ func setupLogging() {
 
 // start 在托盘就绪后调用，启动 watcher。
 func (c *controller) start() {
+	if c.configErr != nil {
+		// config.yaml 损坏：明确提示，区别于"未配置区域"
+		tray.SetState(tray.StateError, "配置文件损坏，请检查 config.yaml: "+c.configErr.Error())
+		return
+	}
 	c.restartWatcher()
 }
 
