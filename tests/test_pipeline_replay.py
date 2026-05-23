@@ -36,7 +36,7 @@ def _load_fixture(name: str) -> dict:
 
 class _RecordingNotifier(LarkWebhookNotifier):
     def __init__(self):
-        super().__init__(webhook_url="https://example.invalid/dummy")
+        super().__init__(webhook_urls=["https://example.invalid/dummy"])
         self.sent_payloads: list[str] = []
 
     def _post(self, payload: dict) -> NotifyResult:

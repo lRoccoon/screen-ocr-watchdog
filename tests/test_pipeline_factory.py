@@ -55,11 +55,96 @@ def test_ocr_mode_builds_pipeline(tmp_path: Path):
 
 
 def test_image_diff_mode_raises_on_missing_credentials(tmp_path: Path):
-    cfg = AppConfig(mode="image_diff", notifier=NotifierCfg())  # 三个字段全空
+    cfg = AppConfig(mode="image_diff", notifier=NotifierCfg())
     history = HistoryStore(tmp_path / "h.ndjson")
     try:
         build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
     except ValueError as e:
-        assert "lark_app_id" in str(e) or "credential" in str(e).lower()
+        msg = str(e).lower()
+        assert "lark_app_id" in msg or "credential" in msg or "target" in msg
         return
     raise AssertionError("expected ValueError for missing credentials")
+
+
+from app.notifier.lark_webhook import LarkWebhookNotifier
+from app.notifier.lark_image import LarkImageNotifier
+from app.storage.config import LarkTargetCfg
+
+
+def test_ocr_mode_injects_all_effective_webhook_urls(tmp_path: Path):
+    cfg = AppConfig(
+        mode="ocr",
+        notifier=NotifierCfg(
+            lark_webhook_urls=["https://a", "https://b", "https://c"],
+        ),
+    )
+    history = HistoryStore(tmp_path / "h.ndjson")
+    pipe = build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
+    assert isinstance(pipe.notifier, LarkWebhookNotifier)
+    assert pipe.notifier.webhook_urls == ["https://a", "https://b", "https://c"]
+
+
+def test_ocr_mode_falls_back_to_single_webhook_url(tmp_path: Path):
+    """list 为空、单字段非空：注入 1 元素 list。"""
+    cfg = AppConfig(
+        mode="ocr",
+        notifier=NotifierCfg(lark_webhook_url="https://legacy"),
+    )
+    history = HistoryStore(tmp_path / "h.ndjson")
+    pipe = build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
+    assert pipe.notifier.webhook_urls == ["https://legacy"]
+
+
+def test_image_diff_mode_injects_all_effective_targets(tmp_path: Path):
+    _purge_paddle_modules()
+    cfg = AppConfig(
+        mode="image_diff",
+        notifier=NotifierCfg(
+            lark_app_id="cli_x",
+            lark_app_secret="sec_x",
+            lark_targets=[
+                LarkTargetCfg(receive_id="oc_a", receive_id_type="chat_id"),
+                LarkTargetCfg(receive_id="ou_b", receive_id_type="open_id"),
+            ],
+        ),
+    )
+    history = HistoryStore(tmp_path / "h.ndjson")
+    pipe = build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
+    assert isinstance(pipe.notifier, LarkImageNotifier)
+    assert [(t.receive_id, t.receive_id_type) for t in pipe.notifier.targets] == [
+        ("oc_a", "chat_id"),
+        ("ou_b", "open_id"),
+    ]
+
+
+def test_image_diff_mode_falls_back_to_single_receive_id(tmp_path: Path):
+    _purge_paddle_modules()
+    cfg = AppConfig(
+        mode="image_diff",
+        notifier=NotifierCfg(
+            lark_app_id="cli_x",
+            lark_app_secret="sec_x",
+            lark_receive_id="oc_legacy",
+            lark_receive_id_type="chat_id",
+        ),
+    )
+    history = HistoryStore(tmp_path / "h.ndjson")
+    pipe = build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
+    assert len(pipe.notifier.targets) == 1
+    assert pipe.notifier.targets[0].receive_id == "oc_legacy"
+
+
+def test_image_diff_mode_raises_when_no_effective_targets(tmp_path: Path):
+    """有 app_id/app_secret 但 list 和单字段都空 → 报错。"""
+    _purge_paddle_modules()
+    cfg = AppConfig(
+        mode="image_diff",
+        notifier=NotifierCfg(lark_app_id="cli_x", lark_app_secret="sec_x"),
+    )
+    history = HistoryStore(tmp_path / "h.ndjson")
+    try:
+        build_pipeline(cfg, history=history, frames_dir=tmp_path / "frames")
+    except ValueError as e:
+        assert "target" in str(e).lower() or "receive_id" in str(e).lower()
+        return
+    raise AssertionError("expected ValueError for no effective targets")
