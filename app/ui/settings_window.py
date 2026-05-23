@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
+    QPlainTextEdit,
     QPushButton,
     QSpinBox,
     QTabWidget,
@@ -17,6 +17,10 @@ from PySide6.QtWidgets import (
 
 from app.notifier.lark_webhook import LarkWebhookNotifier
 from app.storage.config import AppConfig
+from app.ui.webhook_url_helpers import (
+    format_webhook_urls_for_textarea,
+    parse_webhook_urls_from_textarea,
+)
 
 
 class SettingsWindow(QWidget):
@@ -84,24 +88,33 @@ class SettingsWindow(QWidget):
     def _build_lark_tab(self) -> QWidget:
         w = QWidget()
         form = QFormLayout(w)
-        self.webhook = QLineEdit(self.config.notifier.lark_webhook_url)
-        self.webhook.setPlaceholderText("https://open.feishu.cn/open-apis/bot/v2/hook/...")
+        self.webhook_edit = QPlainTextEdit(
+            format_webhook_urls_for_textarea(
+                webhook_urls=list(self.config.notifier.lark_webhook_urls),
+                webhook_url_legacy=self.config.notifier.lark_webhook_url,
+            )
+        )
+        self.webhook_edit.setPlaceholderText(
+            "每行一个 Webhook URL，如：\nhttps://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+        )
+        self.webhook_edit.setMinimumHeight(120)
         test_btn = QPushButton("发送测试消息")
         test_btn.clicked.connect(self._test_webhook)
         self.webhook_status = QLabel("")
-        form.addRow("Webhook URL:", self.webhook)
+        form.addRow("Webhook URLs:", self.webhook_edit)
         form.addRow(test_btn, self.webhook_status)
         return w
 
     def _test_webhook(self) -> None:
-        url = self.webhook.text().strip()
-        if not url:
-            self.webhook_status.setText("请先填写 URL")
+        urls = parse_webhook_urls_from_textarea(self.webhook_edit.toPlainText())
+        if not urls:
+            self.webhook_status.setText("请先填写至少一个 URL")
             self.webhook_status.setStyleSheet("color: #c4291a;")
             return
-        r = LarkWebhookNotifier(url).send_text("[Screen OCR Watchdog] 测试消息")
+        r = LarkWebhookNotifier(urls).send_text("[Screen OCR Watchdog] 测试消息")
+        n = len(urls)
         if r.ok:
-            self.webhook_status.setText("✓ 成功")
+            self.webhook_status.setText(f"✓ {n}/{n} 全部成功")
             self.webhook_status.setStyleSheet("color: #1ea84a;")
         else:
             self.webhook_status.setText(f"✗ {r.message}")
@@ -127,5 +140,9 @@ class SettingsWindow(QWidget):
         self.config.diff.lru_frames = self.lru.value()
         self.config.diff.batch_threshold = self.batch.value()
         self.config.ocr.card_gap = self.gap.value()
-        self.config.notifier.lark_webhook_url = self.webhook.text().strip()
+        # 多行文本 → list；同时清空旧单字段，保存后只走 list
+        self.config.notifier.lark_webhook_urls = parse_webhook_urls_from_textarea(
+            self.webhook_edit.toPlainText()
+        )
+        self.config.notifier.lark_webhook_url = ""
         self.config_saved.emit()

@@ -33,14 +33,44 @@ class ImageDiffCfg(BaseModel):
     bbox_padding: int = 8
 
 
+class LarkTargetCfg(BaseModel):
+    receive_id: str = ""
+    receive_id_type: Literal["chat_id", "open_id", "user_id", "union_id", "email"] = "chat_id"
+
+
 class NotifierCfg(BaseModel):
+    # 新（list 为主）
+    lark_webhook_urls: list[str] = Field(default_factory=list)
+    lark_targets: list[LarkTargetCfg] = Field(default_factory=list)
+
+    # 旧（list 为空时 fallback，向后兼容 v0.1.0）
     lark_webhook_url: str = ""
-    attach_screenshot: bool = False
-    # image_diff 模式专用：自建应用凭证
-    lark_app_id: str = ""
-    lark_app_secret: str = ""
     lark_receive_id: str = ""
     lark_receive_id_type: Literal["chat_id", "open_id", "user_id", "union_id", "email"] = "chat_id"
+
+    # 不变
+    lark_app_id: str = ""
+    lark_app_secret: str = ""
+    attach_screenshot: bool = False
+
+    def effective_webhook_urls(self) -> list[str]:
+        if self.lark_webhook_urls:
+            return [u for u in self.lark_webhook_urls if u]
+        if self.lark_webhook_url:
+            return [self.lark_webhook_url]
+        return []
+
+    def effective_targets(self) -> list[LarkTargetCfg]:
+        if self.lark_targets:
+            return [t for t in self.lark_targets if t.receive_id]
+        if self.lark_receive_id:
+            return [
+                LarkTargetCfg(
+                    receive_id=self.lark_receive_id,
+                    receive_id_type=self.lark_receive_id_type,
+                )
+            ]
+        return []
 
 
 class AppConfig(BaseModel):

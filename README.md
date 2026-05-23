@@ -127,6 +127,42 @@ image_diff:
 
 注意：飞书自定义机器人 webhook 不能直接发图片，所以这条路径必须用**自建应用** + tenant_access_token。在 [飞书开放平台](https://open.feishu.cn) 创建自建应用，开通 `im:message`、`im:resource` 权限，把 app_id/app_secret 填到 config，并把应用拉进目标群即可。
 
+## 多群通知
+
+两种模式都支持把同一帧推送到多个飞书目标，部分失败不阻断其他目标，错误打日志。
+
+### OCR 模式（多 webhook）
+
+```yaml
+notifier:
+  lark_webhook_urls:
+    - https://open.feishu.cn/open-apis/bot/v2/hook/aaa
+    - https://open.feishu.cn/open-apis/bot/v2/hook/bbb
+```
+
+也可直接在 GUI 设置 → 飞书 tab 里每行一个 URL，「发送测试消息」会对所有 URL 都发一次并显示聚合结果。
+
+### image_diff 模式（多 receive_id）
+
+同一个自建应用 `lark_app_id` / `lark_app_secret` 可对接多个 `receive_id`（不同 `receive_id_type` 可混用，应用需要分别拉进对应群/加好友）：
+
+```yaml
+mode: image_diff
+notifier:
+  lark_app_id: cli_xxxx
+  lark_app_secret: xxxx
+  lark_targets:
+    - {receive_id: oc_chat_xxx, receive_id_type: chat_id}
+    - {receive_id: ou_open_yyy, receive_id_type: open_id}
+    - {receive_id: user@example.com, receive_id_type: email}
+```
+
+`image_diff` 模式下 1 帧只上传 1 次图，复用同一个 `image_key` 发送给所有 target，节省 OpenAPI 调用。
+
+### 向后兼容
+
+v0.1.0 的旧字段 `lark_webhook_url` / `lark_receive_id` 仍然可读，会被当作单元素 list 处理。GUI 首次打开时会把旧字段合并到多行文本框，保存后写入新字段并清空旧字段。
+
 ## 关键参数（`config.yaml`）
 
 ```yaml

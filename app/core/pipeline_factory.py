@@ -28,9 +28,11 @@ def build_pipeline(
 ) -> PipelineLike:
     if config.mode == "image_diff":
         nc = config.notifier
-        if not (nc.lark_app_id and nc.lark_app_secret and nc.lark_receive_id):
+        targets = nc.effective_targets()
+        if not (nc.lark_app_id and nc.lark_app_secret and targets):
             raise ValueError(
-                "image_diff mode requires notifier.lark_app_id / lark_app_secret / lark_receive_id"
+                "image_diff mode requires notifier.lark_app_id / lark_app_secret "
+                "and at least one target (lark_targets or lark_receive_id)"
             )
         ic = config.image_diff
         detector = ImageDiffDetector(
@@ -42,8 +44,7 @@ def build_pipeline(
         notifier = LarkImageNotifier(
             app_id=nc.lark_app_id,
             app_secret=nc.lark_app_secret,
-            receive_id=nc.lark_receive_id,
-            receive_id_type=nc.lark_receive_id_type,
+            targets=targets,
         )
         return ImagePipeline(
             detector=detector,
@@ -54,5 +55,5 @@ def build_pipeline(
 
     # ocr mode
     ocr = PaddleOcrEngine(lang=config.ocr.lang)
-    notifier = LarkWebhookNotifier(config.notifier.lark_webhook_url)
+    notifier = LarkWebhookNotifier(config.notifier.effective_webhook_urls())
     return Pipeline(ocr=ocr, notifier=notifier, history=history, config=config)
