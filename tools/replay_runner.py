@@ -54,7 +54,7 @@ def main():
 
     pipeline = Pipeline(
         ocr=StubOcrEngine(ocr_frames),
-        notifier=LarkWebhookNotifier(args.webhook),
+        notifier=LarkWebhookNotifier([args.webhook]),
         history=HistoryStore(Path(args.history)),
         config=cfg,
     )
