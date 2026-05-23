@@ -1,5 +1,5 @@
-"""settings_window 纯函数 helper 单测：URL 多行文本解析 / 渲染。"""
-from app.ui.settings_window import (
+"""webhook_url_helpers 纯函数单测：URL 多行文本解析 / 渲染。"""
+from app.ui.webhook_url_helpers import (
     format_webhook_urls_for_textarea,
     parse_webhook_urls_from_textarea,
 )
@@ -29,7 +29,6 @@ def test_format_empty_list_returns_empty_string():
 
 
 def test_format_merges_list_and_legacy_single_field():
-    """加载时 list + 单字段（若不在 list 里）合并展示。"""
     out = format_webhook_urls_for_textarea(
         webhook_urls=["https://a", "https://b"],
         webhook_url_legacy="https://legacy",
