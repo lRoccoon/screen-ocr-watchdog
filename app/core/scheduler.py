@@ -10,21 +10,20 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 from app.capture.mss_capturer import Capturer
-from app.core.pipeline import FrameResult, Pipeline
 
 log = logging.getLogger(__name__)
 
-OnFrame = Callable[[FrameResult], None]
+OnFrame = Callable[[Any], None]
 OnError = Callable[[Exception], None]
 
 
 class WatchdogRunner:
     def __init__(
         self,
-        pipeline: Pipeline,
+        pipeline: Any,
         capturer: Capturer,
         interval_seconds: float,
         on_frame: OnFrame,
