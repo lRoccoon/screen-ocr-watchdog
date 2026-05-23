@@ -1,4 +1,4 @@
-"""飞书自建应用图片消息发送：tenant_access_token 缓存 + 上传图 + 发 image 消息。
+"""飞书自建应用图片消息发送：tenant_access_token 缓存 + 上传图 + 多目标扇出。
 
 只用于 mode=image_diff。与 LarkWebhookNotifier 平级、不共享代码。
 """
@@ -10,9 +10,12 @@ import logging
 import time
 from dataclasses import dataclass
 from threading import Lock
+from typing import Sequence
 
 import requests
 from PIL import Image
+
+from app.storage.config import LarkTargetCfg
 
 log = logging.getLogger(__name__)
 
@@ -33,21 +36,20 @@ class LarkImageNotifier:
         self,
         app_id: str,
         app_secret: str,
-        receive_id: str,
-        receive_id_type: str = "chat_id",
+        targets: Sequence[LarkTargetCfg],
         timeout: float = 10.0,
     ) -> None:
         self.app_id = app_id
         self.app_secret = app_secret
-        self.receive_id = receive_id
-        self.receive_id_type = receive_id_type
+        # 过滤 receive_id 为空的非法 target
+        self.targets: list[LarkTargetCfg] = [t for t in targets if t.receive_id]
         self.timeout = timeout
         self._token: str = ""
         self._token_expires_at: float = float("-inf")
         self._token_lock = Lock()
 
     def _credentials_ok(self) -> bool:
-        return bool(self.app_id and self.app_secret and self.receive_id)
+        return bool(self.app_id and self.app_secret and self.targets)
 
     def _get_token(self) -> str:
         with self._token_lock:
@@ -85,15 +87,15 @@ class LarkImageNotifier:
             )
         return data["data"]["image_key"]
 
-    def _send_message(self, token: str, image_key: str) -> None:
+    def _send_message(self, token: str, image_key: str, target: LarkTargetCfg) -> None:
         resp = requests.post(
-            f"{MESSAGE_URL}?receive_id_type={self.receive_id_type}",
+            f"{MESSAGE_URL}?receive_id_type={target.receive_id_type}",
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
             json={
-                "receive_id": self.receive_id,
+                "receive_id": target.receive_id,
                 "msg_type": "image",
                 "content": json.dumps({"image_key": image_key}),
             },
@@ -107,16 +109,44 @@ class LarkImageNotifier:
 
     def send_image(self, image: Image.Image) -> NotifyResult:
         if not self._credentials_ok():
-            log.error("lark image send skipped: missing app_id/app_secret/receive_id")
-            return NotifyResult(ok=False, message="missing credentials (app_id/app_secret/receive_id)")
+            log.error(
+                "lark image send skipped: app_id_set=%s secret_set=%s targets=%d",
+                bool(self.app_id), bool(self.app_secret), len(self.targets),
+            )
+            return NotifyResult(
+                ok=False,
+                message="missing credentials or no targets configured",
+            )
+
+        # 1) token + 2) upload，任一失败则整体失败
         try:
             token = self._get_token()
             image_key = self._upload_image(token, image)
-            self._send_message(token, image_key)
-            return NotifyResult(ok=True, message="ok")
         except Exception as e:
-            log.error(
-                "lark image notify failed: %s | receive_id=%s receive_id_type=%s",
-                e, self.receive_id, self.receive_id_type,
-            )
+            log.error("lark image prep failed: %s", e)
             return NotifyResult(ok=False, message=str(e))
+
+        # 3) 扇出 send_message，每个 target 独立 try/except
+        failures: list[str] = []
+        for t in self.targets:
+            try:
+                self._send_message(token, image_key, t)
+            except Exception as e:
+                log.error(
+                    "lark image send_message failed: receive_id=%s type=%s err=%s",
+                    t.receive_id, t.receive_id_type, e,
+                )
+                failures.append(f"{t.receive_id}={e}")
+
+        n = len(self.targets)
+        if not failures:
+            return NotifyResult(ok=True, message="ok")
+        if len(failures) == n:
+            return NotifyResult(
+                ok=False,
+                message=f"all {n} targets failed: {'; '.join(failures)}",
+            )
+        return NotifyResult(
+            ok=False,
+            message=f"{len(failures)}/{n} targets failed: {'; '.join(failures)}",
+        )
