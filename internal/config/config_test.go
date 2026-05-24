@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/lRoccoon/screen-ocr-watchdog/internal/notify"
 )
 
 func TestLoadMissingFileReturnsDefaults(t *testing.T) {
@@ -95,5 +97,118 @@ func TestLoadMalformedYAMLReturnsError(t *testing.T) {
 	}
 	if _, err := Load(p); err == nil {
 		t.Fatal("Load malformed YAML: expected error, got nil")
+	}
+}
+
+// ---------- EffectiveTargets ----------
+
+func TestEffectiveTargetsListTakesPriority(t *testing.T) {
+	l := Lark{
+		Targets: []notify.Target{
+			{ReceiveID: "oc_a", ReceiveIDType: "chat_id"},
+			{ReceiveID: "ou_b", ReceiveIDType: "open_id"},
+		},
+		ReceiveID:     "legacy",
+		ReceiveIDType: "chat_id",
+	}
+	got := l.EffectiveTargets()
+	if len(got) != 2 || got[0].ReceiveID != "oc_a" || got[1].ReceiveID != "ou_b" {
+		t.Errorf("EffectiveTargets = %+v, want [oc_a/chat_id, ou_b/open_id]", got)
+	}
+}
+
+func TestEffectiveTargetsFallbackToSingleField(t *testing.T) {
+	l := Lark{ReceiveID: "oc_legacy", ReceiveIDType: "chat_id"}
+	got := l.EffectiveTargets()
+	if len(got) != 1 || got[0].ReceiveID != "oc_legacy" || got[0].ReceiveIDType != "chat_id" {
+		t.Errorf("EffectiveTargets = %+v, want [oc_legacy/chat_id]", got)
+	}
+}
+
+func TestEffectiveTargetsFallbackDefaultsTypeChatID(t *testing.T) {
+	l := Lark{ReceiveID: "oc_legacy"} // ReceiveIDType 为空
+	got := l.EffectiveTargets()
+	if len(got) != 1 || got[0].ReceiveIDType != "chat_id" {
+		t.Errorf("EffectiveTargets = %+v, want default type chat_id", got)
+	}
+}
+
+func TestEffectiveTargetsBothEmptyReturnsNil(t *testing.T) {
+	if got := (Lark{}).EffectiveTargets(); got != nil {
+		t.Errorf("EffectiveTargets = %+v, want nil", got)
+	}
+}
+
+func TestEffectiveTargetsDropsBlankReceiveIDsInList(t *testing.T) {
+	l := Lark{Targets: []notify.Target{
+		{ReceiveID: "oc_a", ReceiveIDType: "chat_id"},
+		{ReceiveID: "", ReceiveIDType: "chat_id"},
+	}}
+	got := l.EffectiveTargets()
+	if len(got) != 1 || got[0].ReceiveID != "oc_a" {
+		t.Errorf("EffectiveTargets = %+v, want only [oc_a]", got)
+	}
+}
+
+func TestEffectiveTargetsListEntryDefaultsTypeChatID(t *testing.T) {
+	l := Lark{Targets: []notify.Target{
+		{ReceiveID: "oc_a"}, // ReceiveIDType 为空
+	}}
+	got := l.EffectiveTargets()
+	if len(got) != 1 || got[0].ReceiveIDType != "chat_id" {
+		t.Errorf("EffectiveTargets = %+v, want default type chat_id", got)
+	}
+}
+
+func TestLoadV1YAMLWithSingleReceiveIDFallsBack(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "v1.yaml")
+	content := "" +
+		"mode: image_diff\n" +
+		"lark:\n" +
+		"  app_id: cli_x\n" +
+		"  app_secret: sec_x\n" +
+		"  receive_id: oc_legacy\n" +
+		"  receive_id_type: chat_id\n"
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(cfg.Lark.Targets) != 0 {
+		t.Errorf("Targets = %+v, want empty (legacy yaml)", cfg.Lark.Targets)
+	}
+	got := cfg.Lark.EffectiveTargets()
+	if len(got) != 1 || got[0].ReceiveID != "oc_legacy" {
+		t.Errorf("EffectiveTargets = %+v, want [oc_legacy]", got)
+	}
+}
+
+func TestLoadNewYAMLWithTargetsList(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "new.yaml")
+	content := "" +
+		"mode: image_diff\n" +
+		"lark:\n" +
+		"  app_id: cli_x\n" +
+		"  app_secret: sec_x\n" +
+		"  targets:\n" +
+		"    - receive_id: oc_a\n" +
+		"      receive_id_type: chat_id\n" +
+		"    - receive_id: ou_b\n" +
+		"      receive_id_type: open_id\n"
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	got := cfg.Lark.EffectiveTargets()
+	if len(got) != 2 || got[0].ReceiveID != "oc_a" || got[1].ReceiveID != "ou_b" {
+		t.Errorf("EffectiveTargets = %+v, want [oc_a, ou_b]", got)
+	}
+	if got[0].ReceiveIDType != "chat_id" || got[1].ReceiveIDType != "open_id" {
+		t.Errorf("EffectiveTargets types = %+v, want [chat_id, open_id]", got)
 	}
 }

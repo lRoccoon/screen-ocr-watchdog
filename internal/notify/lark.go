@@ -9,20 +9,26 @@ import (
 	"image/png"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
 const tokenRefreshBuffer = 5 * time.Minute
 
-// LarkClient 通过飞书自建应用上传图片并发 image 消息。
-type LarkClient struct {
-	appID         string
-	appSecret     string
-	receiveID     string
-	receiveIDType string
+// Target 是一个飞书发送目标。
+type Target struct {
+	ReceiveID     string `yaml:"receive_id"`
+	ReceiveIDType string `yaml:"receive_id_type"`
+}
 
-	baseURL    string // 默认 https://open.feishu.cn；测试可改写
+// LarkClient 通过飞书自建应用上传图片并发 image 消息到一个或多个目标。
+type LarkClient struct {
+	appID     string
+	appSecret string
+	targets   []Target
+
+	baseURL    string
 	httpClient *http.Client
 
 	mu             sync.Mutex
@@ -30,22 +36,24 @@ type LarkClient struct {
 	tokenExpiresAt time.Time
 }
 
-// NewLarkClient 构造客户端。
-func NewLarkClient(appID, appSecret, receiveID, receiveIDType string) *LarkClient {
+// NewLarkClient 构造客户端。targets 为空时 SendImage 会直接报错。
+func NewLarkClient(appID, appSecret string, targets []Target) *LarkClient {
 	return &LarkClient{
-		appID:         appID,
-		appSecret:     appSecret,
-		receiveID:     receiveID,
-		receiveIDType: receiveIDType,
-		baseURL:       "https://open.feishu.cn",
-		httpClient:    &http.Client{Timeout: 10 * time.Second},
+		appID:      appID,
+		appSecret:  appSecret,
+		targets:    append([]Target(nil), targets...),
+		baseURL:    "https://open.feishu.cn",
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
-// SendImage 上传图片并作为 image 消息发到目标会话。
+// SendImage 上传图片一次，扇出发送到所有 targets。
+// 1 帧只调 1 次 token、1 次 upload，复用 image_key 调 N 次 send_message。
+// 部分失败不阻断其他 target；返回值聚合：全成功 nil；否则报错并描述
+// 失败的 receive_id。
 func (c *LarkClient) SendImage(img image.Image) error {
-	if c.appID == "" || c.appSecret == "" || c.receiveID == "" {
-		return fmt.Errorf("lark: missing credentials (app_id/app_secret/receive_id)")
+	if c.appID == "" || c.appSecret == "" || len(c.targets) == 0 {
+		return fmt.Errorf("lark: missing credentials or no targets configured")
 	}
 	token, err := c.getToken()
 	if err != nil {
@@ -55,10 +63,20 @@ func (c *LarkClient) SendImage(img image.Image) error {
 	if err != nil {
 		return fmt.Errorf("lark: upload image: %w", err)
 	}
-	if err := c.sendImageMessage(token, imageKey); err != nil {
-		return fmt.Errorf("lark: send message: %w", err)
+	var failures []string
+	for _, t := range c.targets {
+		if err := c.sendImageMessage(token, imageKey, t); err != nil {
+			failures = append(failures, fmt.Sprintf("%s=%v", t.ReceiveID, err))
+		}
 	}
-	return nil
+	n := len(c.targets)
+	if len(failures) == 0 {
+		return nil
+	}
+	if len(failures) == n {
+		return fmt.Errorf("lark: all %d targets failed: %s", n, strings.Join(failures, "; "))
+	}
+	return fmt.Errorf("lark: %d/%d targets failed: %s", len(failures), n, strings.Join(failures, "; "))
 }
 
 func (c *LarkClient) getToken() (string, error) {
@@ -139,14 +157,14 @@ func (c *LarkClient) uploadImage(token string, img image.Image) (string, error) 
 	return r.Data.ImageKey, nil
 }
 
-func (c *LarkClient) sendImageMessage(token, imageKey string) error {
+func (c *LarkClient) sendImageMessage(token, imageKey string, t Target) error {
 	content, _ := json.Marshal(map[string]string{"image_key": imageKey})
 	reqBody, _ := json.Marshal(map[string]string{
-		"receive_id": c.receiveID,
+		"receive_id": t.ReceiveID,
 		"msg_type":   "image",
 		"content":    string(content),
 	})
-	url := c.baseURL + "/open-apis/im/v1/messages?receive_id_type=" + c.receiveIDType
+	url := c.baseURL + "/open-apis/im/v1/messages?receive_id_type=" + t.ReceiveIDType
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
 		return err

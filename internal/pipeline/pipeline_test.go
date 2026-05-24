@@ -10,6 +10,7 @@ import (
 	"github.com/lRoccoon/screen-ocr-watchdog/internal/config"
 	"github.com/lRoccoon/screen-ocr-watchdog/internal/diff"
 	"github.com/lRoccoon/screen-ocr-watchdog/internal/history"
+	"github.com/lRoccoon/screen-ocr-watchdog/internal/notify"
 )
 
 type stubDetector struct {
@@ -102,5 +103,37 @@ func TestNewUnsupportedModeFails(t *testing.T) {
 	store := history.NewStore(filepath.Join(t.TempDir(), "h"), filepath.Join(t.TempDir(), "f"))
 	if _, err := New(&cfg, store); err == nil {
 		t.Fatal("New: expected error for unsupported mode")
+	}
+}
+
+// 多 target 列表注入。
+func TestNewWithTargetsListSucceeds(t *testing.T) {
+	cfg := config.Default()
+	cfg.Lark = config.Lark{
+		AppID:     "a",
+		AppSecret: "b",
+		Targets: []notify.Target{
+			{ReceiveID: "oc_a", ReceiveIDType: "chat_id"},
+			{ReceiveID: "ou_b", ReceiveIDType: "open_id"},
+		},
+	}
+	store := history.NewStore(filepath.Join(t.TempDir(), "h"), filepath.Join(t.TempDir(), "f"))
+	p, err := New(&cfg, store)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, ok := p.(*ImagePipeline); !ok {
+		t.Errorf("New returned %T, want *ImagePipeline", p)
+	}
+}
+
+// 有 app 凭证但 targets 与 legacy receive_id 都为空 → 报错。
+func TestNewMissingTargetsFails(t *testing.T) {
+	cfg := config.Default()
+	cfg.Lark.AppID = "a"
+	cfg.Lark.AppSecret = "b" // 无 Targets 也无 ReceiveID
+	store := history.NewStore(filepath.Join(t.TempDir(), "h"), filepath.Join(t.TempDir(), "f"))
+	if _, err := New(&cfg, store); err == nil {
+		t.Fatal("New: expected error for no effective targets")
 	}
 }

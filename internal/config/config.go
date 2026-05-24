@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/lRoccoon/screen-ocr-watchdog/internal/notify"
 )
 
 // Region 是被监控的屏幕矩形（像素）。
@@ -24,12 +26,43 @@ type ImageDiff struct {
 	BboxPadding          int     `yaml:"bbox_padding"`
 }
 
-// Lark 是飞书自建应用凭证与目标。
+// Lark 是飞书自建应用凭证与目标。Targets 为主；ReceiveID/ReceiveIDType
+// 是 v1 单目标的旧字段，作为 Targets 为空时的 fallback 保留向后兼容。
 type Lark struct {
-	AppID         string `yaml:"app_id"`
-	AppSecret     string `yaml:"app_secret"`
+	AppID     string          `yaml:"app_id"`
+	AppSecret string          `yaml:"app_secret"`
+	Targets   []notify.Target `yaml:"targets"`
+
+	// 旧（Targets 为空时 fallback）
 	ReceiveID     string `yaml:"receive_id"`
 	ReceiveIDType string `yaml:"receive_id_type"`
+}
+
+// EffectiveTargets 解析生效的发送目标列表：
+// Targets 非空时优先用 Targets，过滤掉 receive_id 为空的项并补默认 type；
+// 否则 ReceiveID 非空时回退为单元素列表；都空返回 nil。
+func (l Lark) EffectiveTargets() []notify.Target {
+	if len(l.Targets) > 0 {
+		out := make([]notify.Target, 0, len(l.Targets))
+		for _, t := range l.Targets {
+			if t.ReceiveID == "" {
+				continue
+			}
+			if t.ReceiveIDType == "" {
+				t.ReceiveIDType = "chat_id"
+			}
+			out = append(out, t)
+		}
+		return out
+	}
+	if l.ReceiveID != "" {
+		rt := l.ReceiveIDType
+		if rt == "" {
+			rt = "chat_id"
+		}
+		return []notify.Target{{ReceiveID: l.ReceiveID, ReceiveIDType: rt}}
+	}
+	return nil
 }
 
 // Config 是完整的应用配置。

@@ -41,13 +41,20 @@ image_diff:
 lark:
   app_id: cli_xxxx                # 飞书开放平台自建应用 app_id
   app_secret: xxxx
-  receive_id: oc_xxxx             # 目标会话 chat_id（或 open_id / email 等）
+  # 推送目标列表：可填多个，1 帧只上传一次图，复用 image_key 扇出到所有 target，
+  # 部分失败不阻断其他 target。不同 receive_id_type 可混用。
+  targets:
+    - {receive_id: oc_xxxx, receive_id_type: chat_id}
+    - {receive_id: ou_yyyy, receive_id_type: open_id}
+    - {receive_id: user@example.com, receive_id_type: email}
+  # 旧版单字段（targets 为空时 fallback，向后兼容 v1.x）
+  receive_id: ""
   receive_id_type: chat_id        # chat_id | open_id | user_id | union_id | email
 ```
 
 飞书自定义机器人 webhook 不能发图片，所以必须用**自建应用**：在
 [飞书开放平台](https://open.feishu.cn) 创建自建应用，开通 `im:message`、
-`im:resource` 权限，把 app_id / app_secret 填入配置，并把应用拉进目标群。
+`im:resource` 权限，把 app_id / app_secret 填入配置，并把应用拉进所有目标群（个人 / 邮箱等目标无需拉群，但需要确保应用对其有可发消息权限）。
 
 ## 数据目录
 

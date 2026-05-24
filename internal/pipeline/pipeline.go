@@ -68,8 +68,9 @@ func New(cfg *config.Config, store *history.Store) (Pipeline, error) {
 	switch cfg.Mode {
 	case "image_diff":
 		l := cfg.Lark
-		if l.AppID == "" || l.AppSecret == "" || l.ReceiveID == "" {
-			return nil, fmt.Errorf("image_diff mode requires lark.app_id/app_secret/receive_id")
+		targets := l.EffectiveTargets()
+		if l.AppID == "" || l.AppSecret == "" || len(targets) == 0 {
+			return nil, fmt.Errorf("image_diff mode requires lark.app_id/app_secret and at least one target (lark.targets or lark.receive_id)")
 		}
 		det := diff.NewDetector(
 			cfg.ImageDiff.PixelDiffThreshold,
@@ -77,7 +78,7 @@ func New(cfg *config.Config, store *history.Store) (Pipeline, error) {
 			cfg.ImageDiff.MinIntervalSeconds,
 			cfg.ImageDiff.BboxPadding,
 		)
-		sender := notify.NewLarkClient(l.AppID, l.AppSecret, l.ReceiveID, l.ReceiveIDType)
+		sender := notify.NewLarkClient(l.AppID, l.AppSecret, targets)
 		return &ImagePipeline{det: det, sender: sender, store: store, now: time.Now}, nil
 	default:
 		return nil, fmt.Errorf("unsupported mode: %q", cfg.Mode)
