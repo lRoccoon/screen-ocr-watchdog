@@ -70,6 +70,7 @@ type Config struct {
 	Mode            string    `yaml:"mode"`
 	Region          Region    `yaml:"region"`
 	IntervalSeconds int       `yaml:"interval_seconds"`
+	FramesDir       string    `yaml:"frames_dir"`
 	ImageDiff       ImageDiff `yaml:"image_diff"`
 	Lark            Lark      `yaml:"lark"`
 }
