@@ -24,6 +24,7 @@ import (
 type controller struct {
 	cfg       config.Config
 	store     *history.Store
+	framesDir string
 	watch     *watcher.Watcher
 	paused    bool
 	configErr error // 非 nil 表示 config.yaml 解析失败
@@ -36,9 +37,14 @@ func main() {
 	if err != nil {
 		slog.Error("load config failed", "err", err)
 	}
+	framesDir := paths.FramesDir()
+	if cfg.FramesDir != "" {
+		framesDir = cfg.FramesDir
+	}
 	c := &controller{
 		cfg:       cfg,
-		store:     history.NewStore(paths.HistoryPath(), paths.FramesDir()),
+		store:     history.NewStore(paths.HistoryPath(), framesDir),
+		framesDir: framesDir,
 		configErr: err,
 	}
 
@@ -46,7 +52,7 @@ func main() {
 		OnTogglePause: c.togglePause,
 		OnPickRegion:  c.pickRegion,
 		OnOpenConfig:  func() { openInExplorer(paths.ConfigPath()) },
-		OnOpenFrames:  func() { openInExplorer(paths.FramesDir()) },
+		OnOpenFrames:  func() { openInExplorer(c.framesDir) },
 		OnQuit:        c.quit,
 	}
 	tray.Run(cb, c.start)
